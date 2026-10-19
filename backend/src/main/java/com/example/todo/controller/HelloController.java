@@ -14,4 +14,9 @@ public class HelloController {
     public Map<String, String> hello() {
         return Map.of("message", "Merhaba, Todo API çalışıyor!");
     }
+
+    @GetMapping("/health")
+    public Map<String, String> health() {
+        return Map.of("status", "UP");
+    }
 }
