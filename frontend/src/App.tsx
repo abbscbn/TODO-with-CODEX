@@ -11,6 +11,7 @@ const filters: { value: TodoFilter; label: string }[] = [
 export default function App() {
   const [todos, setTodos] = useState<Todo[]>([])
   const [filter, setFilter] = useState<TodoFilter>('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
@@ -56,7 +57,10 @@ export default function App() {
 
   const completed = todos.filter(todo => todo.completed).length
   const active = todos.length - completed
-  const visible = todos.filter(todo => filter === 'all' || (filter === 'completed' ? todo.completed : !todo.completed))
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase('tr-TR')
+  const visible = todos.filter(todo =>
+    (filter === 'all' || (filter === 'completed' ? todo.completed : !todo.completed))
+    && todo.title.toLocaleLowerCase('tr-TR').includes(normalizedQuery))
   const busy = loading || creating || pending.size > 0
   const counts = { all: todos.length, active, completed }
   const replaceTodo = (updated: Todo) => setTodos(previous => previous.map(todo => todo.id === updated.id ? updated : todo))
@@ -87,8 +91,14 @@ export default function App() {
             onClick={() => setFilter(item.value)}>{item.label}<span>{loaded ? counts[item.value] : '—'}</span></button>)}</div>
           <button className="refresh-button" disabled={busy} onClick={() => { setEditingId(null); setReload(value => value + 1) }} aria-label="Görev listesini yenile">↻</button>
         </div>
+        <div className="search-area">
+          <label htmlFor="todo-search">Görev başlığında ara</label>
+          <input id="todo-search" type="search" value={searchQuery} placeholder="Başlığa göre ara…"
+            onChange={event => setSearchQuery(event.target.value)} />
+        </div>
         {loading ? <div className="empty-state" role="status"><span className="spinner" />Görevlerin yükleniyor…</div>
           : !loaded ? <div className="empty-state"><span className="empty-icon" aria-hidden="true">↔</span><h2>Bağlantıyı bekliyoruz</h2><p>Backend’i başlattıktan sonra listeyi yenileyebilirsin.</p></div>
+          : visible.length === 0 && normalizedQuery ? <div className="empty-state" role="status"><h2>Aramanızla eşleşen görev bulunamadı.</h2><p>Seçili filtrede sonuç yok. Arama metnini değiştirin veya başka bir filtre seçin.</p></div>
           : visible.length === 0 ? <div className="empty-state"><span className="empty-icon" aria-hidden="true">✓</span><h2>{filter === 'completed' ? 'Tamamlanan görev yok' : filter === 'active' && todos.length ? 'Hepsi tamam! Güzel iş.' : 'Yeni bir başlangıca ne dersin?'}</h2><p>{filter === 'completed' ? 'Tamamladığın görevler burada görünecek.' : filter === 'active' && todos.length ? 'Kendine küçük bir mola verebilirsin.' : 'İlk görevini yukarıdan ekle. Gerisi adım adım gelir.'}</p></div>
           : <ul className="todo-list" aria-label="Görevler">{visible.map(todo => <TodoItem key={todo.id} todo={todo} pending={pending.has(todo.id)} editing={editingId === todo.id}
             onEdit={() => setEditingId(todo.id)} onCancel={() => setEditingId(null)}
