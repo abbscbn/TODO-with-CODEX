@@ -18,6 +18,102 @@ async function start(todos = [task]) {
 }
 
 describe('Todo uygulaması', () => {
+  const noResults = 'Aramanızla eşleşen görev bulunamadı.'
+  const search = (value: string) => fireEvent.change(screen.getByRole('searchbox', { name: 'Görev başlığında ara' }), { target: { value } })
+
+  it('ortak aramayı tüm filtrelerde uygular, metni ve sayaçları korur, ek istek göndermez', async () => {
+    await start([task, { id: 2, title: 'Biten görev', completed: true }, { id: 3, title: 'Alışveriş', completed: false }])
+    search('görev')
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2)
+    expect(screen.queryByText('Alışveriş')).toBeNull()
+    for (const [filter, title] of [['Aktif 2', 'İlk görev'], ['Tamamlanan 1', 'Biten görev'], ['Tümü 3', 'İlk görev']]) {
+      fireEvent.click(screen.getByRole('button', { name: filter }))
+      expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('görev')
+      expect(screen.getByText(title)).toBeTruthy()
+      if (filter !== 'Tümü 3') expect(screen.getAllByRole('checkbox')).toHaveLength(1)
+    }
+    expect(screen.getByText('Toplam görev').parentElement?.textContent).toContain('3')
+    expect(screen.getByText('Aktif görev').parentElement?.textContent).toContain('2')
+    expect(screen.getByRole('button', { name: 'Tamamlanan 1' })).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['İLK', 'İlk görev'], ['ilk', 'İlk görev'], ['IŞIK', 'Işık al'], ['ışık', 'Işık al'],
+    ['ÇÖZÜM', 'Çözüm üret'], ['  görev  ', 'İlk görev'],
+  ])('Türkçe harflerle ve boşluklarla %s sorgusunu eşleştirir', async (query, title) => {
+    await start([task, { id: 2, title: 'Işık al', completed: false }, { id: 3, title: 'Çözüm üret', completed: true }])
+    search(query)
+    expect(screen.getByText(title)).toBeTruthy()
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1)
+  })
+
+  it('sonuç bulunamadığını duyurur, arama temizlenince seçili filtrenin boş durumunu korur', async () => {
+    await start()
+    search('bulunmayan')
+    expect(screen.getByText(noResults).closest('[role="status"]')).toBeTruthy()
+    search('')
+    expect(screen.getByText('İlk görev')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Tamamlanan 0' }))
+    search('görev')
+    expect(screen.getByText(noResults)).toBeTruthy()
+    search('   ')
+    expect(screen.getByText('Tamamlanan görev yok')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Tümü 1' }))
+    expect(screen.getByText('İlk görev')).toBeTruthy()
+  })
+
+  it('arama sırasında yükleme ve bağlantı durumlarına öncelik verir', async () => {
+    let finish!: (value: Response) => void
+    fetchMock.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    render(<App />)
+    search('bulunmayan')
+    expect(screen.getByText('Görevlerin yükleniyor…')).toBeTruthy()
+    expect(screen.queryByText(noResults)).toBeNull()
+    finish(respond({}, 500))
+    await screen.findByText('Bağlantıyı bekliyoruz')
+    expect(screen.getByRole('alert')).toBeTruthy()
+    expect(screen.queryByText(noResults)).toBeNull()
+  })
+
+  it('arama sonuçlarını düzenleme, durum değiştirme ve silme sonrasında günceller', async () => {
+    await start([task, { id: 2, title: 'Diğer görev', completed: false }])
+    search('görev')
+    fireEvent.click(screen.getByRole('button', { name: 'İlk görev görevini düzenle' }))
+    fireEvent.change(screen.getByLabelText('Görev başlığını düzenle'), { target: { value: 'Yeni başlık' } })
+    fetchMock.mockResolvedValueOnce(respond({ ...task, title: 'Yeni başlık' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }))
+    await waitFor(() => expect(screen.queryByLabelText('Görev başlığını düzenle')).toBeNull())
+    expect(screen.queryByText('Yeni başlık')).toBeNull()
+    expect(screen.getByText('Diğer görev')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Aktif 2' }))
+    fetchMock.mockResolvedValueOnce(respond({ id: 2, title: 'Diğer görev', completed: true }))
+    fireEvent.click(screen.getByRole('checkbox'))
+    await screen.findByText(noResults)
+    fireEvent.click(screen.getByRole('button', { name: 'Tamamlanan 1' }))
+    expect(screen.getByText('Diğer görev')).toBeTruthy()
+    fetchMock.mockResolvedValueOnce(respond(null, 204))
+    fireEvent.click(screen.getByRole('button', { name: 'Diğer görev görevini sil' }))
+    await screen.findByText(noResults)
+    expect(screen.getByRole('button', { name: 'Tümü 1' })).toBeTruthy()
+    search('')
+    expect(screen.getByText('Tamamlanan görev yok')).toBeTruthy()
+  })
+
+  it('ekleme sonrasında Tümü filtresine geçer ve arama metnini korur', async () => {
+    await start()
+    search('Yeni')
+    fireEvent.click(screen.getByRole('button', { name: 'Tamamlanan 0' }))
+    const input = screen.getByLabelText('Yeni bir görev ekle')
+    fireEvent.change(input, { target: { value: 'Yeni görev' } })
+    fetchMock.mockResolvedValueOnce(respond({ id: 2, title: 'Yeni görev', completed: false }, 201))
+    fireEvent.submit(input.closest('form')!)
+    await screen.findByText('Yeni görev')
+    expect(screen.getByRole('button', { name: 'Tümü 2' }).getAttribute('aria-pressed')).toBe('true')
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('Yeni')
+    expect(screen.queryByText('İlk görev')).toBeNull()
+  })
+
   it('listeyi yükler, filtreler ve sayıları gösterir', async () => {
     await start([task, { id: 2, title: 'Biten görev', completed: true }])
     expect(screen.getByText('Biten görev')).toBeTruthy()

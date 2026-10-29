@@ -281,6 +281,28 @@ h1 span {
   margin:0;
   padding:0 28px;
 }
+.search-area {
+  padding:18px 28px;
+}
+.search-area label {
+  display:block;
+  font-size:13px;
+  font-weight:650;
+  margin-bottom:10px;
+}
+.search-area input {
+  width:100%;
+  min-width:0;
+  border:1px solid #e3e5ed;
+  border-radius:9px;
+  padding:13px 15px;
+  background:#fcfcfe;
+  color:#273047;
+}
+.search-area input:focus {
+  border-color:#a290dc;
+  background:white;
+}
 .todo-item {
   min-height:85px;
   display:flex;
@@ -549,6 +571,9 @@ h1 span {
   }
   .todo-list {
     padding:0 18px;
+  }
+  .search-area {
+    padding:16px 18px;
   }
   .todo-item {
     gap:8px;
